@@ -1,5 +1,7 @@
+import os
 import sys
 from setuptools import setup, find_packages
+from typing import List
 
 from pydantic_odm import __version__
 
@@ -25,6 +27,17 @@ def create_package_list(base_package):
              for pkg
              in find_packages(base_package)
              if not exclude_package(pkg)])
+
+
+def get_packages(package: str) -> List[str]:
+    """
+    Return root package and all sub-packages.
+    """
+    return [
+        dirpath
+        for dirpath, dirnames, filenames in os.walk(package)
+        if os.path.exists(os.path.join(dirpath, '__init__.py'))
+    ]
 
 
 setup(
@@ -57,7 +70,7 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Internet',
     ],
-    packages=['pydantic_odm'],
+    packages=get_packages('pydantic_odm'),
     python_requires='>=3.6',
     zip_safe=False
 )
