@@ -5,6 +5,8 @@ from typing import Any, Dict, Type
 
 from motor import motor_asyncio
 
+from .type_registry import type_registry
+
 
 class MongoDBManager:
     """
@@ -109,6 +111,8 @@ class MongoDBManager:
             auth_mech = configuration.get('AUTH_MECHANISM')
             if auth_mech:
                 connection_params['authMechanism'] = auth_mech
+
+            connection_params['type_registry'] = type_registry
             client = motor_asyncio.AsyncIOMotorClient(**connection_params)
             db_name = configuration.get('NAME', alias)
             cls.connections[alias] = client
