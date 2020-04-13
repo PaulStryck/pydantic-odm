@@ -11,3 +11,6 @@ class Codec(TypeCodec):
 
     def transform_bson(self, value: str) -> PosixPath:
         return PosixPath(value)
+
+
+codec = Codec()
