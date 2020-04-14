@@ -1,5 +1,13 @@
 from bson.codec_options import TypeRegistry
 
-from . import codecs
+from .encoders import (
+    PathEncoder,
+    SetEncoder
+)
 
-type_registry = TypeRegistry(codecs.all_codecs)
+path_encoder = PathEncoder()
+set_encoder = SetEncoder()
+type_registry = TypeRegistry([
+    path_encoder,
+    set_encoder
+])
