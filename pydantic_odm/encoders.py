@@ -11,7 +11,7 @@ class PathEncoder(TypeEncoder):
 
 
 class SetEncoder(TypeEncoder):
-    python_type = Set
+    python_type = set
 
     def transform_python(self, value: Set[Any]) -> List[Any]:
         return list(value)
