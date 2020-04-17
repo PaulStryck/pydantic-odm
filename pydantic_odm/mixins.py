@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, AbstractSet, Any, Dict, List, Union
 from bson import ObjectId
 from motor import motor_asyncio
 from pydantic import BaseModel
+from pymongo.client_session import ClientSession
 from pymongo.collection import Collection, ReturnDocument
 
 from .db import MongoDBManager
@@ -84,27 +85,31 @@ class DBPydanticMixin(BaseDBMixin):
         return collection
 
     @classmethod
-    async def create(cls, fields: Union[Dict, BaseModel]) -> DBPydanticMixin:
+    async def create(
+            cls,
+            fields: Union[Dict, BaseModel],
+            session: ClientSession = None
+        ) -> DBPydanticMixin:
         """Create document by dict or pydantic model"""
         if isinstance(fields, BaseModel):
             fields = fields.dict(exclude_unset=True)
         document = cls.parse_obj(fields)
-        await document.save()
+        await document.save(session=session)
         return document
 
     @classmethod
-    async def count(cls, query: Dict = None) -> int:
+    async def count(cls, query: Dict = None, session: ClientSession = None) -> int:
         """Return count by query or all documents in collection"""
         if not query:
             query = {}
         collection = await cls.get_collection()
-        return await collection.count_documents(query)
+        return await collection.count_documents(query, session=session)
 
     @classmethod
-    async def find_one(cls, query: Dict) -> DBPydanticMixin:
+    async def find_one(cls, query: Dict, session: ClientSession = None) -> DBPydanticMixin:
         """Find and return model from db by pymongo query"""
         collection = await cls.get_collection()
-        result = await collection.find_one(query)
+        result = await collection.find_one(query, session=session)
         if result:
             model = cls.parse_obj(result)
             model._doc = result
@@ -114,14 +119,17 @@ class DBPydanticMixin(BaseDBMixin):
 
     @classmethod
     async def find_many(
-        cls, query: Dict[str, Dict[str, Any]], return_cursor: bool = False
+        cls,
+        query: Dict[str, Dict[str, Any]],
+        return_cursor: bool = False,
+        session: ClientSession = None
     ) -> Union[List[DBPydanticMixin], motor_asyncio.AsyncIOMotorCursor]:
         """
         Find documents by query and return list of model instances
         or query cursor
         """
         collection = await cls.get_collection()
-        cursor = collection.find(query)
+        cursor = collection.find(query, session=session)
         if return_cursor:
             return cursor
 
@@ -139,17 +147,20 @@ class DBPydanticMixin(BaseDBMixin):
         query: Dict[str, Any],
         fields: Dict[str, Dict[str, Any]],
         return_cursor: bool = False,
+        session: ClientSession = None
     ) -> Union[List[DBPydanticMixin], motor_asyncio.AsyncIOMotorCursor]:
         """
         Find and update documents by query
         """
         collection = await cls.get_collection()
-        await collection.update_many(query, fields)
+        await collection.update_many(query, fields, session=session)
         return await cls.find_many(query, return_cursor)
 
     @classmethod
     async def bulk_create(
-        cls, documents: Union[List[BaseModel], List[Dict]],
+        cls,
+        documents: Union[List[BaseModel], List[Dict]],
+        session: ClientSession = None
     ) -> List[DBPydanticMixin]:
         """Create many documents"""
         collection = await cls.get_collection()
@@ -158,7 +169,7 @@ class DBPydanticMixin(BaseDBMixin):
         if isinstance(documents[0], BaseModel):
             documents = [d.dict() for d in documents]
 
-        result = await collection.insert_many(documents)
+        result = await collection.insert_many(documents, session=session)
         inserted_ids = result.inserted_ids
         inserted_documents = []
         for i, document_id in enumerate(inserted_ids):
@@ -168,18 +179,22 @@ class DBPydanticMixin(BaseDBMixin):
             inserted_documents.append(document)
         return inserted_documents
 
-    async def reload(self) -> DBPydanticMixin:
+    async def reload(self, session: ClientSession = None) -> DBPydanticMixin:
         """Reload model data from MongoDB (get new document from db)"""
         collection = await self.get_collection()
         if not self._id:
             raise ValueError('Not found _id in current model instance')
-        _doc = await collection.find_one({'_id': self._id})
+        _doc = await collection.find_one({'_id': self._id}, session=session)
         if _doc:
             self._doc = _doc
             self._update_model_from__doc()
         return self
 
-    async def update(self, fields: Union[BaseModel, Dict],) -> DBPydanticMixin:
+    async def update(
+        self,
+        fields: Union[BaseModel, Dict],
+        session: ClientSession = None
+    ) -> DBPydanticMixin:
         """
         Update Mongo document and pydantic instance.
 
@@ -192,17 +207,20 @@ class DBPydanticMixin(BaseDBMixin):
         if not self._id:
             raise ValueError('Not found _id in current model instance')
         _doc = await collection.find_one_and_update(
-            {'_id': self._id}, {'$set': fields}, return_document=ReturnDocument.AFTER
+            {'_id': self._id},
+            {'$set': fields},
+            return_document=ReturnDocument.AFTER,
+            session=session
         )
         if _doc:
             self._doc.update(_doc)
             self._update_model_from__doc()
         return self
 
-    async def save(self) -> DBPydanticMixin:
+    async def save(self, session: ClientSession = None) -> DBPydanticMixin:
         collection = await self.get_collection()
         if not self._id:
-            instance = await collection.insert_one(self.dict())
+            instance = await collection.insert_one(self.dict(), session=session)
             if instance:
                 self._id = instance.inserted_id
                 self._doc = {'_id': self._id, **self.dict()}
@@ -213,17 +231,17 @@ class DBPydanticMixin(BaseDBMixin):
                     updated[field] = value
             if updated:
                 instance = await collection.update_one(
-                    {'_id': self._id}, {'$set': updated}
+                    {'_id': self._id}, {'$set': updated}, session=session
                 )
                 if instance:
                     self._doc.update(updated)
         return self
 
-    async def delete(self) -> int:
+    async def delete(self, session: ClientSession = None) -> int:
         """Delete document from db"""
         collection = await self.get_collection()
         if not self._id:
             raise ValueError('Not found _id in current model instance')
-        result = await collection.delete_one({'_id': self._id})
+        result = await collection.delete_one({'_id': self._id}, session=session)
         self._doc = {}
         return result.deleted_count
